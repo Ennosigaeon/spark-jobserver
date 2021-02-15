@@ -1,13 +1,15 @@
 package spark.jobserver
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, FunSpecLike, Matchers}
-import java.nio.file.{Files, Paths}
 
+import java.nio.file.{Files, Paths}
 import spark.jobserver.common.akka
 import spark.jobserver.common.akka.AkkaTestUtils
 import spark.jobserver.io.DataFileDAO
+
+import java.io.IOException
 
 object DataManagerActorSpec {
   val system = ActorSystem("test")
@@ -37,7 +39,7 @@ class DataManagerActorSpec extends TestKit(DataManagerActorSpec.system) with Imp
   val actor: ActorRef = system.actorOf(DataManagerActor.props(dao), "data-manager")
 
   val brokenDAO: DataFileDAO = new DataFileDAO(config) {
-    override def deleteAll(): Boolean = false
+    override def deleteAll(): Unit = throw new IOException()
   }
   val brokenDaoActor: ActorRef = system.actorOf(DataManagerActor.props(brokenDAO), "broken-dao-data-manager")
 
@@ -154,6 +156,17 @@ class DataManagerActorSpec extends TestKit(DataManagerActorSpec.system) with Imp
     it("should handle errors in delete all") {
       brokenDaoActor ! DeleteAllData
       expectMsgClass(classOf[Error])
+    }
+
+    it("should prevent path traversal attacks") {
+      val fileName = "../maliciousFile-" + System.currentTimeMillis
+
+      actor ! StoreData(fileName, bytes)
+      val fn = expectMsgPF() {
+        case Error(ex) => ex
+      }
+
+      fn.getMessage should endWith("not in data root")
     }
   }
 }

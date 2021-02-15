@@ -16,6 +16,8 @@ import spark.jobserver.io.JobDAOActor._
 import spark.jobserver.io._
 import spark.jobserver.util.ErrorData
 
+import java.nio.file.{FileAlreadyExistsException, NoSuchFileException}
+
 // Tests web response codes and formatting
 // Does NOT test underlying Supervisor / JarManager functionality
 class WebApiSpec extends FunSpec with Matchers with BeforeAndAfterAll
@@ -155,13 +157,15 @@ with ScalatestRouteTest with ScalaFutures with SprayJsonSupport {
       case DeleteBinary("failure") => sender ! BinaryDeletionFailure(new Exception("deliberate"))
       case DeleteBinary(_) => sender ! BinaryDeleted
 
-      case DataManagerActor.StoreData("errorfileToRemove", _) => sender ! DataManagerActor.Error
+      case DataManagerActor.StoreData("errorfileToRemove", _) =>
+        sender ! DataManagerActor.Error(new FileAlreadyExistsException("errorfileToRemove"))
       case DataManagerActor.StoreData(filename, _) => {
         sender ! DataManagerActor.Stored(filename + "-time-stamp")
       }
       case DataManagerActor.ListData => sender ! Set("demo1", "demo2")
       case DataManagerActor.DeleteData("/tmp/fileToRemove") => sender ! DataManagerActor.Deleted
-      case DataManagerActor.DeleteData("errorfileToRemove") => sender ! DataManagerActor.Error
+      case DataManagerActor.DeleteData("errorfileToRemove") =>
+        sender ! DataManagerActor.Error(new NoSuchFileException("errorfileToRemove"))
       case GetBinaryInfoListForCp(cp) if cp.contains("BinaryNotFound") =>
         sender ! NoSuchBinary("BinaryNotFound")
       case GetBinaryInfoListForCp(Seq("Failure")) =>
